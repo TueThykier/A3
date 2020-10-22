@@ -1,0 +1,12 @@
+The benchmarks are provided in the form of 3 hexfiles, which are to be
+simulated with different inputs. You are not allowed to change the hexfiles.
+
+All benchmarks sort a set of random integers. The size of the set is
+given as parameter.
+
+The "run-performance.sh" script will run all desired combinations of
+programs and inputs.
+
+The "C"-code from which the hexfiles have been generated are provided
+in the subdirectory "c_reference_sources" for information. But understanding
+the programs are not required to solve the assignment.
