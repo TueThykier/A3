@@ -1,0 +1,3 @@
+test:
+    movq (%r14), %r15 
+    movq (%r14), %r15       # we should have a hit 2nd time
