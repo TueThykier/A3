@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h> // added by us
 
 #include "memory.h"
 #include "trace_read.h"
@@ -40,46 +41,34 @@ typedef struct cache* cache_p;
 // search it's entries to determine if there is a hit or not.
 // In case of a hit it should also update dirty bit and access counter supporting LRU
 bool cache_access(cache_p cache, uint64_t addr, bool is_write) {
-    // can't read from a cache that's being written tue
-    if (is_write == true) {
-        return false;
-    }
-
-    // fra mila på disc:
-    //Jeg forstår ikke helt hvordan last_access skal bruges. Lige nu skriver jeg værdien af access_counter fra cache ved at skrive den ind i last_access når jeg accesser en linje og så tæller jeg access_counter op. Hermed ved jeg at den linje med laveste last_access værdi er den ældste. Er det korrekt?
-
-    // unwrapping addr
-    // from the book: tag bits = addr størrelse - ([number of set index bits] - [number of block offset bits])
-    // 
-    // 16 kB/cache
-    // 64 sets/cache (number of set index bits = 6)
-    // 4 blocks/set
-    // 64 bits/block (number of block offset bits = 6)
-    //
     uint64_t block_offset_amt = 6; // amt = amount
     uint64_t set_index_amt = 6;
     uint64_t tag_amt = 64 - (set_index_amt + block_offset_amt);
     // https://stackoverflow.com/a/10090443 about bit-shifting
-    uint64_t block_bits = (addr << (tag_amt + set_index_amt)) - 1; //mask
-    uint64_t set_bits = ((addr >> block_bits) << tag_amt) - 1; //throw first 6 digits away and mask
-    uint64_t line_tag = addr >> (set_index_amt + block_offset_amt); //throw first 12 digits away
+    uint64_t block_bits = (addr) & ((1 << (tag_amt + set_index_amt)) - 1); //mask 
+    uint64_t set_bits = (addr) & (((1 >> block_bits) << tag_amt) - 1); //throw first 6 digits away and mask
+    uint64_t line_tag = (addr) & (1 >> (set_index_amt + block_offset_amt)); //throw first 12 digits away
 
-    printf("block_bits = %llu", block_bits);
-    printf("set_bits = %llu", set_bits);
-    printf("line_tag = %llu", line_tag);
+    cache->access_counter++;
 
-    int t = 0;
-    while (t < 4) { // search each line in set
+    for (int t = 0; t < 4; t++) { // search each line in set
         if (cache->sets[set_bits].tags[t] == line_tag) {
             if (cache->sets[set_bits].valid[t] == true) {
                 // we got a hit!
-                // count LRU here?
+                //printf("hit: addr = %lu\n", addr);
+                if (is_write) {
+                    //printf("is_write\n");
+                    cache->sets[set_bits].dirty[t] = true;
+                }
+                //printf("last_access = %lu\n", (cache->sets[set_bits].last_access[t]));
+                cache->sets[set_bits].last_access[t] = cache->access_counter;
+                //printf("last_access = %lu\n", (cache->sets[set_bits].last_access[t]));
                 return true;
             }
             break; // no other tags will match in this set(?)
         }
-        t++;
     }
+    //printf("miss: addr = %lu\n", addr);
     return false;
 }
 
@@ -87,8 +76,47 @@ bool cache_access(cache_p cache, uint64_t addr, bool is_write) {
 // be replaced, false otherwise. Find (according to LRU) and initialize a cache 
 // entry to indicate that the requested data is now stored there.
 bool cache_miss_update(cache_p cache, uint64_t addr) {
-    return false; //placeholder
+    // unwrap addr
+    uint64_t block_offset_amt = 6; // amt = amount
+    uint64_t set_index_amt = 6;
+    uint64_t tag_amt = 64 - (set_index_amt + block_offset_amt);
+    // https://stackoverflow.com/a/10090443 about bit-shifting
+    uint64_t block_bits = (addr) & ((1 << (tag_amt + set_index_amt)) - 1); //mask 
+    uint64_t set_bits = (addr) & (((1 >> block_bits) << tag_amt) - 1); //throw first 6 digits away and mask
+    uint64_t line_tag = (addr) & (1 >> (set_index_amt + block_offset_amt)); //throw first 12 digits away
+
+    bool is_dirty_temp = false;
+    // check dirty
+    for (int t = 0; t < 4; t++) { // search each line in set
+        if (cache->sets[set_bits].tags[t] == line_tag) {
+            if (cache->sets[set_bits].dirty[t] == true) {
+                // this line is dirty
+                is_dirty_temp = true;
+            }
+            break; // no other tags will match in this set(?)
+        }
+    }
+
+    // find the LRU victim block in the set:
+    uint64_t smallestLRU = ULONG_MAX;
+    uint64_t victim_index = 0;
+    for (int i = 0; i < 4; i++) {
+        if (cache->sets[set_bits].last_access[i] < smallestLRU) {
+            smallestLRU = cache->sets[set_bits].last_access[i];
+            victim_index = i;
+            //printf("smallestLRU = %lu\n", smallestLRU);
+        }
+    }
+
+    // initialize data in victim block
+    cache->sets[set_bits].tags[victim_index] = line_tag;
+    cache->sets[set_bits].valid[victim_index] = true;
+    cache->sets[set_bits].dirty[victim_index] = false;
+    cache->sets[set_bits].last_access[victim_index] = cache->access_counter;
+
+    return is_dirty_temp;
 }
+
 
 // NO CHANGES NEEDED BELOW THIS LINE
 
@@ -290,10 +318,12 @@ bool memory_read_into_buffer(mem_p mem, val address, val bytes[], bool enable) {
     }
     word addr = address.val;
     for (int i = 0; i < 10; ++i) {
-        if (enable)
+        if (enable) {
             bytes[i] = from_int(memory_read_byte(mem, addr + i));
-        else
+        }
+        else {
             bytes[i] = from_int(0);
+        }
     }
     if (enable) {
         if (cache_access(mem->cache, address.val, false)) {

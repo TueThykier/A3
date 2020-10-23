@@ -1,2 +1,7 @@
-test:
-
+test:                   # overwrite a victim test
+    movq $100, %r12
+    movq (%r12), %r8    # addr 100 loaded in cache
+    movq $5, %r9
+    movq %r9, (%r12)    # overwrite
+    movq (%r12), %r8    # should be hit at addr 100 (and it is :DD )
+    stop
