@@ -41,44 +41,28 @@ typedef struct cache* cache_p;
 // search it's entries to determine if there is a hit or not.
 // In case of a hit it should also update dirty bit and access counter supporting LRU
 bool cache_access(cache_p cache, uint64_t addr, bool is_write) {
-    uint64_t block_offset_amt = 6; // amt = amount
-    uint64_t set_index_amt = 6;
-    uint64_t tag_amt = 64 - (set_index_amt + block_offset_amt);
-    // https://stackoverflow.com/a/10090443 about bit-shifting
+    // unwrap addr
+    uint64_t block_offset_amount = 6;   // log2(CACHE_BLOCK_SIZE)
+    uint64_t set_index_amount = 6;      // log2(NUM_SETS)
+    uint64_t tag_amount = CACHE_BLOCK_SIZE - (set_index_amount + block_offset_amount);
 
-    //uint64_t block_bits = (addr) & ((1 << (tag_amt + set_index_amt)) - 1); //mask 
-    //uint64_t set_bits = (addr) & (((1 >> block_bits) << tag_amt) - 1); //throw first 6 digits away and mask
-    //uint64_t line_tag = (addr) & (1 >> (set_index_amt + block_offset_amt)); //throw first 12 digits away
-    uint64_t set_bits = (addr>>block_offset_amt)&((1<<(set_index_amt))-1); //throw first 6 digits away and mask
-    uint64_t line_tag = addr>>(64-tag_amt); //throw first 12 digits away
-
+    // throw first 6 digits away for set_bits
+    uint64_t set_bits = (addr >> block_offset_amount) & ((1 << (set_index_amount)) - 1);
+    // throw first 12 digits away for line_tag
+    uint64_t line_tag = addr >> (CACHE_BLOCK_SIZE - tag_amount);
 
     cache->access_counter++;
 
-    for (int t = 0; t < 4; t++) { // search each line in set
-        if (cache->sets[set_bits].tags[t] == line_tag) {
-            if (cache->sets[set_bits].valid[t] == true) {
-                // we got a hit!
-
-                printf("hit: addr = %lu\n", addr);
-
-                if (is_write) {
-                    //printf("is_write\n");
-                    cache->sets[set_bits].dirty[t] = true;
-                }
-
-                printf("last_access = %lu\n", (cache->sets[set_bits].last_access[t]));
-                cache->sets[set_bits].last_access[t] = cache->access_counter;
-                printf("last_access = %lu\n", (cache->sets[set_bits].last_access[t]));
-
-                return true;
+    for (int t = 0; t < ASSOCIATIVITY; t++) { // search each line in set
+        if (cache->sets[set_bits].tags[t] == line_tag && cache->sets[set_bits].valid[t]) {
+            // we got a hit!
+            if (is_write) {
+                cache->sets[set_bits].dirty[t] = true;
             }
-            break; // no other tags will match in this set(?)
+            cache->sets[set_bits].last_access[t] = cache->access_counter;
+            return true;
         }
     }
-
-    printf("miss: addr = %lu\n", addr);
-
     return false;
 }
 
@@ -87,48 +71,28 @@ bool cache_access(cache_p cache, uint64_t addr, bool is_write) {
 // entry to indicate that the requested data is now stored there.
 bool cache_miss_update(cache_p cache, uint64_t addr) {
     // unwrap addr
-    uint64_t block_offset_amt = 6; // amt = amount
-    uint64_t set_index_amt = 6;
-    uint64_t tag_amt = 64 - (set_index_amt + block_offset_amt);
-    // https://stackoverflow.com/a/10090443 about bit-shifting
+    uint64_t block_offset_amount = 6;   // log2(CACHE_BLOCK_SIZE)
+    uint64_t set_index_amount = 6;      // log2(NUM_SETS)
+    uint64_t tag_amount = CACHE_BLOCK_SIZE - (set_index_amount + block_offset_amount);
 
-    uint64_t line_tag = addr>>(64-tag_amt); //throw first 12 digits away
-    uint64_t set_bits = (addr>>block_offset_amt)&((1<<(set_index_amt))-1); //throw first 6 digits away and mask
-
-    bool is_dirty_temp = false;
-    // check dirty
-    printf("addr: %lu\n", addr);
-    printf("line_tag: %llu\n", line_tag);
-    printf("set_bits: %llu\n", set_bits);
-    /*for (int t = 0; t < 4; t++) { // search each line in set
-
-        if (cache->sets[set_bits].tags[t] == line_tag) {
-            if (cache->sets[set_bits].dirty[t] == true) {
-                // this line is dirty
-                is_dirty_temp = true;
-            }
-            break; // no other tags will match in this set(?)
-        }
-
-    }*/
-
+    // throw first 6 digits away for set_bits
+    uint64_t set_bits = (addr >> block_offset_amount) & ((1 << (set_index_amount)) - 1);
+    // throw first 12 digits away for line_tag
+    uint64_t line_tag = addr >> (CACHE_BLOCK_SIZE - tag_amount);
 
     // find the LRU victim block in the set:
     uint64_t smallestLRU = ULONG_MAX;
-    uint64_t victim_index = 0;
-    for (int i = 0; i < 4; i++) {
+    int victim_index = 0;
+    for (int i = 0; i < ASSOCIATIVITY; i++) {
         if (cache->sets[set_bits].last_access[i] < smallestLRU) {
             smallestLRU = cache->sets[set_bits].last_access[i];
             victim_index = i;
-            printf("smallestLRU = %lu\n", smallestLRU);
-
         }
     }
-
-    // initialize data in victim block
-
+    // check dirty
     bool is_dirty = cache->sets[set_bits].dirty[victim_index];
 
+    // initialize data in victim block
     cache->sets[set_bits].tags[victim_index] = line_tag;
     cache->sets[set_bits].valid[victim_index] = true;
     cache->sets[set_bits].dirty[victim_index] = false;
@@ -136,9 +100,7 @@ bool cache_miss_update(cache_p cache, uint64_t addr) {
     cache->access_counter++;
 
     return is_dirty;
-
 }
-
 
 // NO CHANGES NEEDED BELOW THIS LINE
 
@@ -382,8 +344,8 @@ bool memory_access(mem_p mem, val address, bool enable, bool is_write) {
             return true;
         }
         mem->data_miss++;
-        cache_miss_update(mem->cache, address.val);
-        mem->cache_busy = CACHE_LINE_FILL_LATENCY;
+        bool dirty_eviction = cache_miss_update(mem->cache, address.val);
+        mem->cache_busy = CACHE_LINE_FILL_LATENCY + (dirty_eviction ? DIRTY_PENALTY : 0);
         return false;
     }
     else

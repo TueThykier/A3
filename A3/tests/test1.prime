@@ -1,4 +1,4 @@
-test:                       # do we miss at first test
+test:                       # do we miss first on a cold cache test
     movq $300, %r14
     movq (%r14), %r15       # addr 300; miss initially
     movq (%r14), %r15       # we should have a hit 2nd time (and we do :DD )

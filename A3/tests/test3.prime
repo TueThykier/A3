@@ -1,6 +1,0 @@
-test:                       # LRU behaviour test (wip)
-    movq $100, %r8
-    movq (%r8), %r15        # addr 100 loaded
-    movq $200, %r8
-    movq (%r8), %r15        # addr 200 loaded
-    
