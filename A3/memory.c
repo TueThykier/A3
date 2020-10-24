@@ -45,11 +45,13 @@ bool cache_access(cache_p cache, uint64_t addr, bool is_write) {
     uint64_t set_index_amt = 6;
     uint64_t tag_amt = 64 - (set_index_amt + block_offset_amt);
     // https://stackoverflow.com/a/10090443 about bit-shifting
+
     //uint64_t block_bits = (addr) & ((1 << (tag_amt + set_index_amt)) - 1); //mask 
     //uint64_t set_bits = (addr) & (((1 >> block_bits) << tag_amt) - 1); //throw first 6 digits away and mask
     //uint64_t line_tag = (addr) & (1 >> (set_index_amt + block_offset_amt)); //throw first 12 digits away
     uint64_t set_bits = (addr>>block_offset_amt)&((1<<(set_index_amt))-1); //throw first 6 digits away and mask
     uint64_t line_tag = addr>>(64-tag_amt); //throw first 12 digits away
+
 
     cache->access_counter++;
 
@@ -57,20 +59,26 @@ bool cache_access(cache_p cache, uint64_t addr, bool is_write) {
         if (cache->sets[set_bits].tags[t] == line_tag) {
             if (cache->sets[set_bits].valid[t] == true) {
                 // we got a hit!
+
                 printf("hit: addr = %lu\n", addr);
+
                 if (is_write) {
                     //printf("is_write\n");
                     cache->sets[set_bits].dirty[t] = true;
                 }
+
                 printf("last_access = %lu\n", (cache->sets[set_bits].last_access[t]));
                 cache->sets[set_bits].last_access[t] = cache->access_counter;
                 printf("last_access = %lu\n", (cache->sets[set_bits].last_access[t]));
+
                 return true;
             }
             break; // no other tags will match in this set(?)
         }
     }
+
     printf("miss: addr = %lu\n", addr);
+
     return false;
 }
 
@@ -83,6 +91,7 @@ bool cache_miss_update(cache_p cache, uint64_t addr) {
     uint64_t set_index_amt = 6;
     uint64_t tag_amt = 64 - (set_index_amt + block_offset_amt);
     // https://stackoverflow.com/a/10090443 about bit-shifting
+
     uint64_t line_tag = addr>>(64-tag_amt); //throw first 12 digits away
     uint64_t set_bits = (addr>>block_offset_amt)&((1<<(set_index_amt))-1); //throw first 6 digits away and mask
 
@@ -92,6 +101,7 @@ bool cache_miss_update(cache_p cache, uint64_t addr) {
     printf("line_tag: %llu\n", line_tag);
     printf("set_bits: %llu\n", set_bits);
     /*for (int t = 0; t < 4; t++) { // search each line in set
+
         if (cache->sets[set_bits].tags[t] == line_tag) {
             if (cache->sets[set_bits].dirty[t] == true) {
                 // this line is dirty
@@ -99,7 +109,9 @@ bool cache_miss_update(cache_p cache, uint64_t addr) {
             }
             break; // no other tags will match in this set(?)
         }
+
     }*/
+
 
     // find the LRU victim block in the set:
     uint64_t smallestLRU = ULONG_MAX;
@@ -109,11 +121,14 @@ bool cache_miss_update(cache_p cache, uint64_t addr) {
             smallestLRU = cache->sets[set_bits].last_access[i];
             victim_index = i;
             printf("smallestLRU = %lu\n", smallestLRU);
+
         }
     }
 
     // initialize data in victim block
+
     bool is_dirty = cache->sets[set_bits].dirty[victim_index];
+
     cache->sets[set_bits].tags[victim_index] = line_tag;
     cache->sets[set_bits].valid[victim_index] = true;
     cache->sets[set_bits].dirty[victim_index] = false;
@@ -121,6 +136,7 @@ bool cache_miss_update(cache_p cache, uint64_t addr) {
     cache->access_counter++;
 
     return is_dirty;
+
 }
 
 
