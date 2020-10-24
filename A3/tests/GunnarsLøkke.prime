@@ -1,0 +1,11 @@
+forBoi:                         # (wip)
+    movq $1, %rdx               #initial expression (i=0)
+    jmp .test
+.Lop:
+                                #body statement
+    addq $64, %r8
+    movq (%r8), %r15            # addr (n * 10) loaded into cache
+    addq $1, %rdx               #increment expression (i++)
+.test:
+    cbne $20000, %rdx, .Lop     #if not equal, goto loop
+    

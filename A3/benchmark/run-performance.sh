@@ -29,7 +29,7 @@ do
     echo ""
     echo "Sorting with " ${algo} " - sorting" ${elem} "entries"
     echo "------------------"
-#  ${SIM} ${1}.hex run $machine < runs/run-${elem}.input > ${datafile}
-    printf "0\n${elem}\n" | ${SIM} ${algo}.hex ${entrypoint}
+    #${SIM} ${1}.hex run $machine < runs/run-${elem}.input > ${datafile}
+    printf "0\n${elem}\n" | ${SIM} benchmark/${algo}.hex ${entrypoint}
   done
 done
